@@ -2,8 +2,10 @@ import os
 import torch
 import torchvision.datasets as datasets
 from tqdm import tqdm
+
 from torch import nn, optim
 from model import VariationalAutoencoder
+from dataset import SpectrogramDataset
 from torchvision import transforms
 from torchvision.utils import save_image
 from torch.utils.data import DataLoader
@@ -13,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 MODEL_PATH = 'mode.pth'
 DEVICE = torch.device("cpu" if torch.backends.mps.is_available() else "cpu")
 print(f'{DEVICE = }')
-INPUT_DIM = 784     # MNIST has 1x28x28 images
+INPUT_DIM = 32000     # 80 * 400 for spectrograms
 H_DIM = 200
 Z_DIM = 20
 NUM_EPOCHS = 15
@@ -21,9 +23,12 @@ BATCH_SIZE = 32
 LR = 1e-4
 
 # Dataset Loading
-train_dataset = datasets.MNIST(root="dataset/", train=True, transform = transforms.ToTensor(), download=True)      # transform.ToTensor() divides by 255, so pixel values are in range [0, 1]
-test_dataset = datasets.MNIST(root="dataset/", train=False, transform = transforms.ToTensor(), download=True)
-# print(f'{dataset = }')
+PROJECT_DIR = '/Users/jadongeathers/Desktop/Stanford University/AY 2023-2024/Autumn 2023/CS 236/Final Project/cs236/'
+LJSPEECH_DIR = os.path.join(PROJECT_DIR, 'LJSpeech')
+data_dir = os.path.join(LJSPEECH_DIR, 'spectrograms/')
+train_dataset = SpectrogramDataset(data_dir, train=True)
+test_dataset = SpectrogramDataset(data_dir, train=False)
+
 train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 test_loader = DataLoader(dataset=test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
@@ -46,7 +51,7 @@ def train():
         epoch_kl_divergence = 0
         epoch_loss = 0
         
-        for i, (x, _) in tqdm(enumerate(train_loader)):     # the _ is the labels (y's) for the batch, which we don't need for the purposes of reconstructing images
+        for x in tqdm(train_loader):
             # forward pass
             x = x.to(DEVICE).view(x.shape[0], INPUT_DIM)    # keep batch dimension (x.shape[0]), but flatten the images
             x_reconstructed, mu, sigma = model(x)
@@ -70,12 +75,12 @@ def train():
         writer.add_scalar('Epoch Reconstruction Loss', epoch_reconstruction_loss, epoch)
         writer.add_scalar('Epoch KL Divergence', epoch_kl_divergence, epoch)
         writer.add_scalar('Epoch Loss', epoch_loss, epoch)
-        # print(f'{epoch_loss = }')
+        print(f'epoch loss: {epoch_loss}')
 
 
 def test():
     test_loss = 0
-    for i, (x, _) in tqdm(enumerate(test_loader)):
+    for i, x in tqdm(enumerate(test_loader)):
         # forward pass
         x = x.to(DEVICE).view(x.shape[0], INPUT_DIM)    # keep batch dimension (x.shape[0]), but flatten the images
         x_reconstructed, mu, sigma = model(x)
@@ -87,7 +92,7 @@ def test():
 
         test_loss += loss
     
-    print(f'{test_loss = }')
+    print(f'test loss: {test_loss}')
 
 
 
@@ -126,8 +131,9 @@ def main():
     test()
 
     # Run inference on digits 0-9
-    for digit in range(10):
-        inference(digit)
+    # for digit in range(10):
+    #     inference(digit)
+    # TODO: Inference on audio
 
 if __name__ == '__main__':
     main()
