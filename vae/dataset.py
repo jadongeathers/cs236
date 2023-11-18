@@ -21,5 +21,5 @@ class SpectrogramDataset(Dataset):
     def __getitem__(self, idx):
         file_path = os.path.join(self.data_dir, self.file_paths[idx])
         spectrogram = np.load(file_path)
-        spectrogram = torch.from_numpy(spectrogram)      
+        spectrogram = torch.from_numpy(spectrogram)
         return spectrogram
