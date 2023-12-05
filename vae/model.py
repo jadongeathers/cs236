@@ -4,8 +4,8 @@ from torch import nn
 class Encoder(nn.Module):
     def __init__(self, input_dim, z_dim):
         super().__init__()
-        h1_dim = 8000
-        h2_dim = 3200
+        h1_dim = 800
+        h2_dim = 400
         self.x_to_h1 = nn.Linear(input_dim, h1_dim)
         self.h1_to_h2 = nn.Linear(h1_dim, h2_dim)
         self.h2_to_z = nn.Linear(h2_dim, z_dim)
@@ -19,8 +19,8 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, z_dim, output_dim):
         super().__init__()
-        h1_dim = 8000
-        h2_dim = 3200
+        h1_dim = 800
+        h2_dim = 400
         self.z_to_h2 = nn.Linear(z_dim, h2_dim)
         self.h2_to_h1 = nn.Linear(h2_dim, h1_dim)
         self.h1_to_x = nn.Linear(h1_dim, output_dim)
@@ -30,6 +30,28 @@ class Decoder(nn.Module):
         out = self.relu(self.h2_to_h1(out))
         out = self.h1_to_x(out)
         return out
+
+# class Encoder(nn.Module):
+#     def __init__(self, input_dim, z_dim):
+#         super().__init__()
+#         self.x_to_h = nn.Linear(input_dim, 200)
+#         self.h_to_z = nn.Linear(200, z_dim)
+#         self.relu = nn.ReLU()
+#     def forward(self, x):
+#         out = self.relu(self.x_to_h(x))
+#         out = self.h_to_z(out)     # no relu so that mu/sigma can be negative
+#         return out
+
+# class Decoder(nn.Module):
+#     def __init__(self, z_dim, output_dim):
+#         super().__init__()
+#         self.z_to_h = nn.Linear(z_dim, 200)
+#         self.h_to_x = nn.Linear(200, output_dim)
+#         self.relu = nn.ReLU()
+#     def forward(self, x):
+#         out = self.relu(self.z_to_h(x))
+#         out = self.h_to_x(out)
+#         return out
 
 
 class VariationalAutoencoder(nn.Module):

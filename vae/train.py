@@ -2,6 +2,7 @@ import os
 import torch
 import torchvision.datasets as datasets
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from torch import nn, optim
 from model import VariationalAutoencoder
@@ -13,10 +14,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 # Configuration
 MODEL_PATH = 'model.pth'
-DEVICE = torch.device("cuda" if torch.backends.mps.is_available() else "cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f'{DEVICE = }')
 INPUT_DIM = 32000     # 80 * 400 for spectrograms
-Z_DIM = 800
+Z_DIM = 200
 NUM_EPOCHS = 10
 BATCH_SIZE = 32
 LR = 1e-4
@@ -101,24 +102,37 @@ def inference(num_examples=1):
         # get random spectrogram and encode it
         random_audio_idx = 0    # can replace with random later if we want
         original_spectrogram = test_dataset[random_audio_idx].to(DEVICE)
-        mu, sigma = model.encode(original_spectrogram.view(-1, INPUT_DIM))
+        print(f'{original_spectrogram.shape = }')
+
+        mu, sigma = model.encode(original_spectrogram.reshape(-1, INPUT_DIM))
 
         # sample latent space
         epsilon = torch.randn_like(sigma).to(DEVICE)
         z = mu + sigma * epsilon
 
         # decode sample
-        reconstructed_spectrogram = model.decode(z).view(-1, 1, 80, 400)
-        original_spectrogram = original_spectrogram.view(-1, 1, 80, 400)
+        reconstructed_spectrogram = model.decode(z).view(80, 400)
+        original_spectrogram = original_spectrogram.view(80, 400)
 
-        save_image(reconstructed_spectrogram, f"results/original_ex{i}.png")
-        save_image(reconstructed_spectrogram, f"results/reconstructed_ex{i}.png")
+        plt.xticks(ticks=[])
+        plt.yticks(ticks=[])
+        plt.imshow(reconstructed_spectrogram.detach().numpy())
+        plt.savefig(f"results/reconstructed_ex{i}.png")
+
+        plt.xticks(ticks=[])
+        plt.yticks(ticks=[])
+        plt.imshow(original_spectrogram.detach().numpy())
+        plt.savefig(f"results/original_ex{i}.png")
+
+        # save_image(original_spectrogram, f"results/original_ex{i}.png")
+        # save_image(reconstructed_spectrogram, f"results/reconstructed_ex{i}.png")
+
 
 
 def main():
     # Load weights if they exist
     if os.path.exists(MODEL_PATH):
-        model.load_state_dict(torch.load(MODEL_PATH))
+        model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device('cpu')))
     
     # Train new model if no weights exists
     else:
