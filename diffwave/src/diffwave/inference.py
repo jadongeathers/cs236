@@ -26,7 +26,7 @@ from diffwave.model import DiffWave
 
 models = {}
 
-def predict(spectrogram=None, model_dir=None, params=None, device=torch.device('cuda'), fast_sampling=False):
+def predict(input, mask, spectrogram=None, model_dir=None, params=None, device=torch.device('cuda'), fast_sampling=False):
   # Lazy load model.
   if not model_dir in models:
     if os.path.exists(f'{model_dir}/weights.pt'):
@@ -40,6 +40,7 @@ def predict(spectrogram=None, model_dir=None, params=None, device=torch.device('
 
   model = models[model_dir]
   model.params.override(params)
+
   with torch.no_grad():
     # Change in notation from the DiffWave paper for fast sampling.
     # DiffWave paper -> Implementation below
@@ -67,26 +68,50 @@ def predict(spectrogram=None, model_dir=None, params=None, device=torch.device('
           break
     T = np.array(T, dtype=np.float32)
 
+    # if not model.params.unconditional:
+    #   if len(spectrogram.shape) == 2:# Expand rank 2 tensors by adding a batch dimension.
+    #     spectrogram = spectrogram.unsqueeze(0)
+    #   spectrogram = spectrogram.to(device)
+    #   x_t = torch.randn(spectrogram.shape[0], model.params.hop_samples * spectrogram.shape[-1], device=device)
+    # else:
+    #   x_t = torch.randn(1, params.audio_len, device=device)
+    # noise_scale = torch.from_numpy(alpha_cum**0.5).float().unsqueeze(1).to(device)
 
-    if not model.params.unconditional:
-      if len(spectrogram.shape) == 2:# Expand rank 2 tensors by adding a batch dimension.
-        spectrogram = spectrogram.unsqueeze(0)
-      spectrogram = spectrogram.to(device)
-      audio = torch.randn(spectrogram.shape[0], model.params.hop_samples * spectrogram.shape[-1], device=device)
-    else:
-      audio = torch.randn(1, params.audio_len, device=device)
-    noise_scale = torch.from_numpy(alpha_cum**0.5).float().unsqueeze(1).to(device)
+    # Forward process
+    x_0, m = input, mask
+    mean = alpha_cum[-1]**0.5 * x_0
+    std = (1 - alpha_cum[-1]) * torch.eye(len(alpha_cum))
+    x_T = torch.normal(mean, std) # Equation 7 in RePaint
 
-    for n in range(len(alpha) - 1, -1, -1):
-      c1 = 1 / alpha[n]**0.5
-      c2 = beta[n] / (1 - alpha_cum[n])**0.5
-      audio = c1 * (audio - c2 * model(audio, torch.tensor([T[n]], device=audio.device), spectrogram).squeeze(1))
-      if n > 0:
-        noise = torch.randn_like(audio)
-        sigma = ((1.0 - alpha_cum[n-1]) / (1.0 - alpha_cum[n]) * beta[n])**0.5
-        audio += sigma * noise
-      audio = torch.clamp(audio, -1.0, 1.0)
-  return audio, model.params.sample_rate
+    # Reverse process
+    x_t = x_T
+
+    for t in range(len(alpha) - 1, -1, -1):
+
+      # Calculation of x t-1 known
+      eps = torch.randn_like(x_0)
+      x_tmin1_known = alpha_cum[t]**0.5 * x_0 + (1.0 - alpha_cum[t]) * eps
+      x_tmin1_known = torch.clamp(x_tmin1_known, -1.0, 1.0)
+
+      # Calculation of x t-1 unknown
+      c1 = 1 / alpha[t]**0.5
+      c2 = beta[t] / (1 - alpha_cum[t])**0.5
+      x_tmin1_unknown = c1 * (x_t - c2 * model(x_t, torch.tensor([T[t]], device=x_t.device), spectrogram).squeeze(1))
+      if t > 0:
+        z = torch.randn_like(x_t)
+        sigma_t = ((1.0 - alpha_cum[t-1]) / (1.0 - alpha_cum[t]) * beta[t])**0.5
+        x_tmin1_unknown += sigma_t * z
+      x_tmin1_unknown = torch.clamp(x_tmin1_unknown, -1.0, 1.0)
+
+      # Calculation of x t-1
+      x_tmin1 = m * x_tmin1_known + (1 - m) * x_tmin1_unknown
+      
+      if t > 0:
+        mean = (1.0 - beta[t-1])**0.5 * x_tmin1
+        std = beta[t-1] * torch.eye(len(x_tmin1))
+        x_t = torch.normal(mean, std)
+
+  return x_0, model.params.sample_rate
 
 
 def main(args):
@@ -94,7 +119,11 @@ def main(args):
     spectrogram = torch.from_numpy(np.load(args.spectrogram_path))
   else:
     spectrogram = None
-  audio, sr = predict(spectrogram, model_dir=args.model_dir, fast_sampling=args.fast, params=base_params)
+
+  input = torch.from_numpy(np.load(args.input_path))
+  mask = torch.from_numpy(np.load(args.mask_path))
+
+  audio, sr = predict(input, mask, spectrogram, model_dir=args.model_dir, fast_sampling=args.fast, params=base_params)
   torchaudio.save(args.output, audio.cpu(), sample_rate=sr)
 
 
