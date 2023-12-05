@@ -1,0 +1,3 @@
+[submodule "diffwave_unconditional"]
+	path = diffwave_unconditional
+	url = https://github.com/philsyn/DiffWave-unconditional.git
